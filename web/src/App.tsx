@@ -36,7 +36,6 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [hasAiKey, setHasAiKey] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const resizing = useRef<'left' | 'right' | null>(null);
   const restored = useRef(false);
   const restoredEmpty = useRef(true);
@@ -216,30 +215,17 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // Cmd/Ctrl+K opens search, ? opens help
+  // Cmd/Ctrl+K opens search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setShowSearch((s) => !s);
       }
-      if (e.key === '?' && !(e.metaKey || e.ctrlKey)) {
-        setShowHelp((s) => !s);
-      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
-
-  const exportJson = () => {
-    fetch('/api/tree').then((r) => r.json()).then((tree) => {
-      Promise.all([fetch('/api/overview').then((r) => r.json()), fetch('/api/context').then((r) => r.json())]).then(([ov, ctx]) => {
-        const blob = new Blob([JSON.stringify({ tree, overview: ov, context: ctx }, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = `${repo?.name ?? 'archi'}-export.json`; a.click(); URL.revokeObjectURL(url);
-      });
-    });
-  };
 
   const handleSearchSelect = (result: { type: string; name: string; id: string; view: string }) => {
     if (result.view === 'overview') {
@@ -247,7 +233,6 @@ export default function App() {
     } else if (result.view === 'context') {
       openInTab({ name: 'Context', path: CONTEXT_PATH, type: 'file', ext: '' });
     } else if (result.view === 'trace') {
-      // symbol: open the file and select it in inspector
       const colonIdx = result.id.indexOf(':');
       if (colonIdx > 0) {
         const fileId = result.id.slice(0, colonIdx);
@@ -332,8 +317,6 @@ export default function App() {
           <Settings size={14} strokeWidth={1.8} />
           <span>AI</span>
         </button>
-        <button className="tb-btn" title="Export JSON" onClick={exportJson}>Export</button>
-        <button className="tb-btn" title="Shortcuts (?)" onClick={() => setShowHelp((s) => !s)}>?</button>
         <button
           className={`tb-btn refresh-pill${fresh ? ' fresh' : ' stale'}`}
           title={fresh ? 'Index up to date' : 'Files changed, click to re-index'}
@@ -496,20 +479,6 @@ export default function App() {
           onClose={() => setShowSearch(false)}
           onSelect={handleSearchSelect}
         />
-        {showHelp && (
-          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }} onClick={() => setShowHelp(false)}>
-            <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, minWidth: 360 }} onClick={(e) => e.stopPropagation()}>
-              <div style={{ fontWeight: 600, marginBottom: 12 }}>Keyboard shortcuts</div>
-              <div style={{ fontSize: 13, lineHeight: '1.8', color: 'var(--text-2)' }}>
-                <div><code>Ctrl+K</code> — Search</div>
-                <div><code>?</code> — Toggle this help</div>
-                <div><code>Click</code> file in tree — open</div>
-                <div><code>Click</code> line — inspect symbol</div>
-              </div>
-              <button className="btn-trace" style={{ marginTop: 16 }} onClick={() => setShowHelp(false)}>Close</button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

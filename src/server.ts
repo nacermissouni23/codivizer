@@ -632,8 +632,7 @@ async function main() {
       const trigger = () => {
         if (debounce) clearTimeout(debounce);
         debounce = setTimeout(() => {
-          console.log('  watch: change detected, reindexing…');
-          reindex().catch((e) => console.warn('  watch: reindex failed -', String(e)));
+          console.log('  watch: change detected — press Refresh to reindex');
         }, 500);
       };
       watcher.on('add', trigger).on('change', trigger).on('unlink', trigger);
