@@ -11,11 +11,6 @@ interface Sym {
   endLine: number;
 }
 
-const READABLE_EXTS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py',
-  '.json', '.md', '.txt', '.html', '.css', '.yml', '.yaml', '.toml',
-]);
-
 export default function CodeView({
   filePath,
   ext,
@@ -31,30 +26,33 @@ export default function CodeView({
   const [symbols, setSymbols] = useState<Sym[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const isMarkdown = ext === '.md';
-  const readable = READABLE_EXTS.has((ext ?? '').toLowerCase());
+  const extLower = (ext ?? '').toLowerCase();
+  const isMarkdown = extLower === '.md';
 
   useEffect(() => {
-    if (!readable) return;
     setContent(null);
     setError(null);
     setSymbols([]);
     fetch(`/api/file?path=${encodeURIComponent(filePath)}`)
       .then(async (r) => {
-        if (!r.ok) throw new Error('failed to load');
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body?.error ?? 'failed to load');
+        }
         return r.json();
       })
       .then((d) => setContent(d.content))
-      .catch(() => setError('Could not load this file.'));
+      .catch((e) => setError(String(e.message ?? e ?? 'Could not load this file.')));
     if (!isMarkdown) {
       fetch(`/api/symbols?file=${encodeURIComponent(filePath)}`)
         .then((r) => r.json())
         .then((d) => setSymbols(d.symbols ?? []))
         .catch(() => {});
     }
-  }, [filePath]);
+  }, [filePath, isMarkdown]);
 
-  if (!readable)
+  if (error) {
+    const isBinary = error.toLowerCase().includes('binary');
     return (
       <>
         <div className="code-header">
@@ -70,25 +68,13 @@ export default function CodeView({
         <div className="center-empty">
           <div className="empty-card">
             <FileQuestion size={28} strokeWidth={1.5} style={{ color: 'var(--text-3)', marginBottom: 12 }} />
-            <div className="empty-title">No preview available</div>
-            <div className="empty-desc">
-              Codivizer indexes the structure of <code>.{ext ?? '?'}</code> files but can't render
-              their contents. The file is part of the tree and watched for changes.
-            </div>
+            <div className="empty-title">{isBinary ? 'Binary file' : 'Cannot open file'}</div>
+            <div className="empty-desc">{error}</div>
           </div>
         </div>
       </>
     );
-
-  if (error)
-    return (
-      <div className="center-empty">
-        <div className="empty-card">
-          <div className="empty-title">Cannot open file</div>
-          <div className="empty-desc">{error}</div>
-        </div>
-      </div>
-    );
+  }
 
   if (content === null)
     return (

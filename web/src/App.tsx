@@ -8,6 +8,7 @@ import OverviewView from './components/OverviewView';
 import ContextView from './components/ContextView';
 import BriefView from './components/BriefView';
 import TraceView from './TraceView';
+import SymbolDepsView from './SymbolDepsView';
 import SettingsModal from './components/SettingsModal';
 import SearchModal from './components/SearchModal';
 import FileIconFor from './components/FileIcon';
@@ -17,6 +18,7 @@ const LANG_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
 export const OVERVIEW_PATH = '@overview';
 export const TRACE_PREFIX = '@trace:';
+export const SYMDEPS_PREFIX = '@symdeps:';
 export const CONTEXT_PATH = '@context';
 export const BRIEF_PATH = '@brief';
 
@@ -120,6 +122,38 @@ export default function App() {
       .catch(() => {});
   }, [dataTick]);
 
+  // Global AI poll: ensures views auto-update even when not mounted.
+  // If AI was pending and now applied, bump dataTick so all keys remount and fetch fresh data.
+  const aiWasPending = useRef<boolean | null>(null);
+  useEffect(() => {
+    let alive = true;
+    const tick = async () => {
+      try {
+        const [ov, ctx, br, st] = await Promise.all([
+          fetch('/api/overview').then((r) => r.json()).catch(() => null),
+          fetch('/api/context').then((r) => r.json()).catch(() => null),
+          fetch('/api/brief').then((r) => r.json()).catch(() => null),
+          fetch('/api/story').then((r) => r.json()).catch(() => null),
+        ]);
+        if (!alive) return;
+        const nowPending = Boolean(ov?.ai?.pending || ctx?.ai?.pending || br?.ai?.pending || st?.ai?.pending);
+        const nowApplied = Boolean(ov?.ai?.applied || ctx?.ai?.applied || br?.ai?.applied || st?.ai?.applied);
+        if (aiWasPending.current === true && !nowPending && nowApplied) {
+          setDataTick((n) => n + 1);
+        }
+        aiWasPending.current = nowPending;
+      } catch {
+        /* ignore */
+      }
+    };
+    tick();
+    const id = setInterval(tick, 3000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, []);
+
   const navigateSymbol = (id: string) => {
     setSymbolId(id || null);
     if (!id) return;
@@ -177,6 +211,22 @@ export default function App() {
       const node: TreeNode = {
         name: `${symName}()`,
         path: tracePath,
+        type: 'file',
+        ext: '',
+      };
+      openInTab(node);
+    }
+  };
+
+  const openSymDeps = (symId: string, symName: string) => {
+    const depPath = `${SYMDEPS_PREFIX}${symId}`;
+    const existing = tabs.find((t) => t.path === depPath);
+    if (existing) {
+      setOpenFile(existing);
+    } else {
+      const node: TreeNode = {
+        name: `${symName} — Dependencies`,
+        path: depPath,
         type: 'file',
         ext: '',
       };
@@ -350,6 +400,7 @@ export default function App() {
                       key={t.path}
                       className={`tab${openFile?.path === t.path ? ' active' : ''}`}
                       onClick={() => setOpenFile(t)}
+                      title={t.name}
                     >
                       {t.path === BRIEF_PATH ? (
                         <BookOpen size={13} strokeWidth={2} />
@@ -359,10 +410,12 @@ export default function App() {
                         <Globe2 size={13} strokeWidth={2} />
                       ) : t.path.startsWith(TRACE_PREFIX) ? (
                         <Activity size={13} strokeWidth={2} />
+                      ) : t.path.startsWith(SYMDEPS_PREFIX) ? (
+                        <Network size={13} strokeWidth={2} />
                       ) : (
                         <FileIconFor node={t} />
                       )}
-                      {t.name}
+                      <span className="tab-name">{t.name}</span>
                       <button
                         className="tab-close"
                         title="Close tab"
@@ -393,7 +446,7 @@ export default function App() {
                       setViewMode((m) => ({ ...m, [openFile.path]: 'deps' }))
                     }
                   >
-                    Deps
+                    Dependencies
                   </button>
                 </div>
               )}
@@ -431,6 +484,12 @@ export default function App() {
                   symbolId={openFile.path.slice(TRACE_PREFIX.length)}
                   onOpenFile={openPath}
                 />
+              ) : openFile?.path.startsWith(SYMDEPS_PREFIX) ? (
+                <SymbolDepsView
+                  key={`symdep-${openFile.path}-${dataTick}`}
+                  symbolId={openFile.path.slice(SYMDEPS_PREFIX.length)}
+                  onNavigate={navigateSymbol}
+                />
               ) : openFile ? (
                 mode === 'deps' ? (
                   <DepsView
@@ -463,6 +522,7 @@ export default function App() {
               symbolId={openFile && !openFile.path.startsWith('@') ? symbolId : null}
               onNavigate={navigateSymbol}
               onTrace={openTrace}
+              onDeps={openSymDeps}
               width={inspectorWidth}
             />
           </>

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity } from 'lucide-react';
+import { Activity, Network } from 'lucide-react';
 
 interface Sym {
   id: string;
@@ -23,11 +23,13 @@ export default function Inspector({
   symbolId,
   onNavigate,
   onTrace,
+  onDeps,
   width,
 }: {
   symbolId: string | null;
   onNavigate: (id: string) => void;
   onTrace: (symId: string, symName: string) => void;
+  onDeps: (symId: string, symName: string) => void;
   width: number;
 }) {
   const [data, setData] = useState<{ symbol: Sym; callers: Rel[]; callees: Rel[] } | null>(
@@ -93,13 +95,23 @@ export default function Inspector({
             {data.symbol.async && <span style={{ color: '#d489c2' }}>async </span>}
             {data.symbol.signature}
           </div>
-          <button
-            className="btn-trace"
-            onClick={() => onTrace(data.symbol.id, data.symbol.name)}
-          >
-            <Activity size={14} strokeWidth={2} />
-            Trace flow
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn-trace"
+              onClick={() => onTrace(data.symbol.id, data.symbol.name)}
+            >
+              <Activity size={14} strokeWidth={2} />
+              Trace flow
+            </button>
+            <button
+              className="btn-trace"
+              onClick={() => onDeps(data.symbol.id, data.symbol.name)}
+              title="Symbol-level callers → callees graph"
+            >
+              <Network size={14} strokeWidth={2} />
+              Dependencies
+            </button>
+          </div>
 
           <div className="insp-section">
             <div className="insp-section-title">

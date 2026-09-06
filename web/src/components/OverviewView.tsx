@@ -11,9 +11,14 @@ import {
   type FolderDepsResponse,
   type CompAnnotations,
 } from '../lib/folderDepsMermaid';
-import DiagramFilter from './DiagramFilter';
 
 type Ann = CompAnnotations | undefined;
+
+function normalizeDir(dir: string): string {
+  // component id "(root)" maps to folder dir "" (root files)
+  if (dir === '(root)' || dir === '(root files)') return '';
+  return dir;
+}
 
 export default function OverviewView({
   repoName,
@@ -27,9 +32,8 @@ export default function OverviewView({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [stack, setStack] = useState<string[]>([]);
-  const [filterOpen, setFilterOpen] = useState(false);
-  const [filterQuery, setFilterQuery] = useState('');
-  const dir = stack[stack.length - 1] ?? '';
+  const rawDir = stack[stack.length - 1] ?? '';
+  const dir = normalizeDir(rawDir);
 
   const { viewportRef, canvasRef, scale, offset, zoomBy, fit, inject, viewportProps } =
     useZoomPan();
@@ -55,13 +59,16 @@ export default function OverviewView({
   }, [overview?.ai.pending, loadOverview]);
 
   useEffect(() => {
-    if (!dir) return;
+    if (!rawDir && !dir) {
+      setFolderData(null);
+      return;
+    }
     setFolderData(null);
     fetch(`/api/folderdeps?dir=${encodeURIComponent(dir)}`)
       .then((r) => r.json())
       .then(setFolderData)
       .catch(() => setError('Could not load the folder graph.'));
-  }, [dir]);
+  }, [dir, rawDir]);
 
   const ann: Ann = overview?.annotations;
 
@@ -71,7 +78,15 @@ export default function OverviewView({
     if (dir && !folderData) return;
 
     let code = '';
-    if (dir) {
+    if (dir || rawDir) {
+      // dir case: render folder view if data exists
+      if (!folderData) return;
+      // if folder has no files, don't try to render empty graph – will show empty overlay instead
+      if (folderData.files.length === 0) {
+        // clear previous render
+        if (canvasRef.current) canvasRef.current.innerHTML = '';
+        return;
+      }
       const r = folderToMermaid(folderData!, ann);
       labelMap.current = r.fileLabelToId;
       boxMap.current = r.boxLabelToDir;
@@ -89,7 +104,7 @@ export default function OverviewView({
         if (cancelled || !canvasRef.current) return;
         inject(svg);
         wireNodeClicks(canvasRef.current, (label) => {
-          if (dir) {
+          if (dir || rawDir) {
             const fileId = labelMap.current.get(label);
             if (fileId) {
               const ext = fileId.slice(fileId.lastIndexOf('.'));
@@ -104,7 +119,11 @@ export default function OverviewView({
               [...labelMap.current.entries()].find(
                 ([l]) => l === label || l.split(':')[0] === label.split(':')[0]
               )?.[1];
-            if (id) setStack((s) => [...s, id]);
+            if (id) {
+              const normalized = normalizeDir(id);
+              // keep original id for stack but normalize for fetch; push normalized? push original then normalize on read
+              setStack((s) => [...s, id]);
+            }
           }
         });
       })
@@ -116,11 +135,11 @@ export default function OverviewView({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dir, folderData, overview, ann]);
+  }, [dir, rawDir, folderData, overview, ann]);
 
   const copyCode = () => {
     let text = '';
-    if (dir && folderData) text = folderToMermaid(folderData, ann).code;
+    if ((dir || rawDir) && folderData) text = folderToMermaid(folderData, ann).code;
     else if (overview) text = overviewToMermaid(overview).code;
     if (!text) return;
     navigator.clipboard.writeText(text).then(() => {
@@ -130,64 +149,12 @@ export default function OverviewView({
   };
 
   const hasGraph =
-    dir ? Boolean(folderData && folderData.files.length > 0) : Boolean(overview && overview.components.length > 0);
+    dir || rawDir ? Boolean(folderData && folderData.files.length > 0) : Boolean(overview && overview.components.length > 0);
 
-  // apply diagram filter: dim non-matching SVG nodes
-  const [matchCount, setMatchCount] = useState(0);
-  const [totalCount, setTotalCount] = useState(0);
+  const isEmptyFolder = (dir || rawDir) && folderData && folderData.files.length === 0;
+  const isTopEmpty = !dir && !rawDir && overview && overview.components.length === 0;
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const svgEl = canvas.querySelector('svg');
-    if (!svgEl) return;
-
-    const nodes = svgEl.querySelectorAll('g.node, g.cluster');
-    const edges = svgEl.querySelectorAll('g.edge');
-
-    if (!filterQuery) {
-      nodes.forEach((n) => {
-        (n as HTMLElement).style.opacity = '';
-        (n as HTMLElement).style.transition = '';
-      });
-      edges.forEach((e) => {
-        (e as HTMLElement).style.opacity = '';
-        (e as HTMLElement).style.transition = '';
-      });
-      setMatchCount(0);
-      setTotalCount(0);
-      return;
-    }
-
-    const needle = filterQuery.toLowerCase();
-    let matches = 0;
-
-    const getNodeText = (n: Element): string => {
-      const parts: string[] = [];
-      n.querySelectorAll('text').forEach((t) => parts.push(t.textContent ?? ''));
-      n.querySelectorAll('foreignObject div').forEach((d) => parts.push(d.textContent ?? ''));
-      return parts.join(' ').toLowerCase();
-    };
-
-    nodes.forEach((n) => {
-      const text = getNodeText(n);
-      if (text.includes(needle)) {
-        matches++;
-        (n as HTMLElement).style.opacity = '1';
-      } else {
-        (n as HTMLElement).style.opacity = '0.15';
-      }
-      (n as HTMLElement).style.transition = 'opacity 0.2s';
-    });
-
-    edges.forEach((e) => {
-      (e as HTMLElement).style.opacity = '0.1';
-      (e as HTMLElement).style.transition = 'opacity 0.2s';
-    });
-
-    setMatchCount(matches);
-    setTotalCount(nodes.length);
-  }, [filterQuery, canvasRef]);
+  const breadcrumbDir = rawDir === '(root)' || rawDir === '(root files)' ? '(root)' : dir;
 
   return (
     <>
@@ -196,11 +163,11 @@ export default function OverviewView({
           <span className="current">
             {repoName}
             {' - '}
-            {dir ? `${dir} - files & dependencies` : 'Component Overview'}
+            {rawDir ? `${breadcrumbDir || '(root)'} - files & dependencies` : 'Component Overview'}
           </span>
-          {!dir && overview?.ai.applied && <span className="ai-badge">AI annotated</span>}
+          {!rawDir && !dir && overview?.ai.applied && <span className="ai-badge">AI annotated</span>}
           {overview?.ai.pending && <span className="ai-badge pending">AI annotating…</span>}
-          {!dir && overview?.ai.error && !overview?.ai.pending && !overview?.ai.applied && <span className="ai-badge error" title={overview.ai.error}>AI failed: {overview.ai.error}</span>}
+          {!rawDir && !dir && overview?.ai.error && !overview?.ai.pending && !overview?.ai.applied && <span className="ai-badge error" title={overview.ai.error}>AI failed: {overview.ai.error}</span>}
         </div>
       </div>
       {error ? (
@@ -209,13 +176,62 @@ export default function OverviewView({
             <div className="empty-desc">{error}</div>
           </div>
         </div>
-      ) : !hasGraph ? (
+      ) : isTopEmpty ? (
         <div className="center-empty">
           <div className="empty-card">
-            <div className="empty-title">{dir ? 'Empty folder' : 'Nothing indexed'}</div>
-            <div className="empty-desc">
-              {dir ? 'No indexed files here.' : 'No components found for this repository.'}
+            <div className="empty-title">Nothing indexed</div>
+            <div className="empty-desc">No components found for this repository.</div>
+          </div>
+        </div>
+      ) : (dir || rawDir) && !folderData ? (
+        <div className="center-empty">
+          <div className="empty-card">
+            <div className="empty-desc">Loading…</div>
+          </div>
+        </div>
+      ) : isEmptyFolder ? (
+        <div className="deps-viewport grab" ref={viewportRef} {...viewportProps}>
+          <div
+            className="deps-canvas"
+            ref={canvasRef}
+            style={{
+              transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
+            }}
+          />
+          <div className="center-empty" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+            <div className="empty-card">
+              <div className="empty-title">Empty folder</div>
+              <div className="empty-desc">No indexed files here.</div>
             </div>
+          </div>
+          {stack.length > 0 && (
+            <div className="nav-controls">
+              <button title="Back" onClick={() => setStack((s) => s.slice(0, -1))}>
+                <ChevronLeft size={14} strokeWidth={2} />
+                Back
+              </button>
+            </div>
+          )}
+          <div className="graph-actions">
+            <div className="zoom-controls">
+              <button title="Zoom in" onClick={() => zoomBy(1.2)}>
+                <Plus size={14} strokeWidth={2} />
+              </button>
+              <button title="Fit" onClick={fit}>
+                <Maximize2 size={13} strokeWidth={2} />
+              </button>
+              <button title="Zoom out" onClick={() => zoomBy(1 / 1.2)}>
+                <Minus size={14} strokeWidth={2} />
+              </button>
+              <span className="zoom-label">{Math.round(scale * 100)}%</span>
+            </div>
+          </div>
+        </div>
+      ) : !hasGraph && !dir && !rawDir ? (
+        <div className="center-empty">
+          <div className="empty-card">
+            <div className="empty-title">Nothing indexed</div>
+            <div className="empty-desc">No components found for this repository.</div>
           </div>
         </div>
       ) : (
@@ -252,14 +268,6 @@ export default function OverviewView({
                 <Minus size={14} strokeWidth={2} />
               </button>
               <span className="zoom-label">{Math.round(scale * 100)}%</span>
-              <DiagramFilter
-                open={filterOpen}
-                onToggle={() => { setFilterOpen(!filterOpen); setFilterQuery(''); }}
-                query={filterQuery}
-                onQueryChange={setFilterQuery}
-                matchCount={matchCount}
-                totalCount={totalCount}
-              />
             </div>
           </div>
         </div>

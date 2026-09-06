@@ -443,7 +443,8 @@ async function main() {
   });
 
   app.get('/api/folderdeps', async (req) => {
-    const dir = String((req.query as any).dir ?? '').replace(/\/+$/, '');
+    let dir = String((req.query as any).dir ?? '').replace(/\/+$/, '');
+    if (dir === '(root)' || dir === '(root files)') dir = '';
     const base = (id: string) => id.split('/').pop() ?? id;
     const inDir = (f: string) =>
       dir === '' || f === dir || f.startsWith(dir + '/');
@@ -531,7 +532,7 @@ async function main() {
     };
   });
 
-  // Path-traversal-safe file read with size cap
+  // Path-traversal-safe file read with size cap — now supports any text file (LICENSE, dotfiles, no-ext, etc.)
   app.get('/api/file', async (req, reply) => {
     const rel = String((req.query as any).path ?? '');
     if (!rel || rel.includes('..') || path.isAbsolute(rel)) {
@@ -555,7 +556,31 @@ async function main() {
       if (!st.isFile() || st.size > MAX_FILE_SIZE_BYTES) {
         return reply.code(400).send({ error: 'not a readable file' });
       }
-      const content = await fs.readFile(realFile, 'utf8');
+      const ext = path.extname(realFile).toLowerCase();
+      if (isBinaryExt(ext)) {
+        return reply.code(400).send({ error: 'binary file — preview not available' });
+      }
+      const buf = await fs.readFile(realFile);
+      // NUL-byte sniff (binary detection) like walk.ts
+      const sniffLen = Math.min(buf.length, 8192);
+      let hasNul = false;
+      for (let i = 0; i < sniffLen; i++) if (buf[i] === 0) { hasNul = true; break; }
+      if (hasNul) {
+        return reply.code(400).send({ error: 'binary file — preview not available' });
+      }
+      // BOM-aware decode (UTF-8 BOM, UTF-16 LE/BE)
+      let content: string;
+      if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) {
+        content = buf.subarray(3).toString('utf8');
+      } else if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) {
+        const { default: iconv } = await import('iconv-lite');
+        content = iconv.decode(buf.subarray(2), 'utf-16le');
+      } else if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) {
+        const { default: iconv } = await import('iconv-lite');
+        content = iconv.decode(buf.subarray(2), 'utf-16be');
+      } else {
+        content = buf.toString('utf8');
+      }
       return { path: rel, content };
     } catch {
       return reply.code(404).send({ error: 'not found' });

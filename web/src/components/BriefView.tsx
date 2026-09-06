@@ -156,9 +156,6 @@ export default function BriefView({
                   {brief.systems.map((s) => (
                     <span key={s.name} className="brief-chip sys" title={s.kind}>
                       {s.label}
-                      <span className={`conf conf-${s.confidence}`}>
-                        {s.confidence === 'high' ? 'HIGH' : 'MED'}
-                      </span>
                     </span>
                   ))}
                   {brief.topLibraries.map((l) => (
