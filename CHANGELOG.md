@@ -2,6 +2,10 @@
 
 All notable changes to Archiviz.
 
+## [0.2.1] - 2026-09-06
+### Fixed
+- **Crash on start**: `FST_ERR_PLUGIN_VERSION_MISMATCH` — `@fastify/rate-limit@10` requires fastify 5.x but archiviz uses fastify 4.29.1. Downgraded to `@fastify/rate-limit@8.0.3` (fastify 4 compatible). `archiviz` now starts on all OSes with zero prereqs.
+
 ## [0.2.0] - 2026-09-06
 
 ### Added

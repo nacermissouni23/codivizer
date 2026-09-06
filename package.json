@@ -1,6 +1,6 @@
 {
   "name": "@nacermissouni23/archiviz",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Local-first, deterministic code architecture explorer",
   "license": "MIT",
@@ -44,7 +44,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@fastify/rate-limit": "^10.3.0",
+    "@fastify/rate-limit": "^8.1.1",
     "@fastify/static": "^7.0.4",
     "@iarna/toml": "^2.2.5",
     "chokidar": "^4.0.3",
