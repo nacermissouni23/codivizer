@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Codivizer — Understand the code. See the system.</title>
+  <meta name="description" content="Codivizer is an interactive codebase explorer designed to help developers understand unfamiliar and complex repositories." />
+  <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+      color: #e8ebf1;
+      background: #0a0e14;
+      display: grid;
+      place-items: center;
+      height: 100dvh;
+      overflow: hidden;
+      position: relative;
+      -webkit-font-smoothing: antialiased;
+    }
+    /* background image + overlays */
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background:
+        linear-gradient(rgba(10,14,20,0.62), rgba(10,14,20,0.78)),
+        url('/assets/background.jpeg'),
+        url('/assets/background.jpg'),
+        url('assets/background.jpg');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      filter: saturate(0.9) brightness(0.95);
+      z-index: -2;
+    }
+    body::after {
+      content: "";
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse 80% 60% at 50% 42%, rgba(255,255,255,0.06), transparent 70%);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 720px;
+      padding: 40px 24px 32px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 0;
+      min-height: 100dvh;
+      justify-content: center;
+    }
+
+    /* icon - top square like sketch */
+    .logo {
+      width: 75px;
+      height: 75px;
+      border-radius: 12px;
+      background: #0f141b;
+      border: 1.5px solid rgba(255,255,255,0.14);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.08);
+      margin-bottom: 20px;
+      margin-top: -6vh;
+    }
+    .logo svg { display: block;
+      width: 48px;
+      height: 48px;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      color: #f2f4f8;
+      line-height: 1;
+      margin-bottom: 38px;
+    }
+
+    .motto {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: #f2f4f8;
+      opacity: 0.96;
+      margin-bottom: 28px;
+      line-height: 1.25;
+    }
+
+    .desc {
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: #aeb6c6;
+      max-width: 620px;
+      width: 100%;
+      font-weight: 400;
+      margin-bottom: 44px;
+      margin-top: 8px;
+      text-wrap: balance;
+    }
+    .desc strong { color: #d6dce8; font-weight: 500; }
+
+    /* command pill - matches sketch bottom bar */
+    .cmd-wrap {
+      display: flex;
+      align-items: center;
+      width: 100%;
+      max-width: 480px;
+      background: rgba(16,20,27,0.92);
+      border: 1px solid rgba(255,255,255,0.13);
+      border-radius: 12px;
+      padding: 6px 6px 6px 16px;
+      gap: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+      backdrop-filter: blur(12px);
+    }
+    .cmd-wrap code {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+      font-size: 13px;
+      color: #e6eaf2;
+      text-align: left;
+      white-space: nowrap;
+      overflow: visible;
+      text-overflow: clip;
+      letter-spacing: -0.01em;
+    }
+    .cmd-wrap code span { color: #7aa4d6; }
+    .copy-btn {
+      flex-shrink: 0;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.08);
+      color: #e8ebf1;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, transform 0.1s;
+    }
+    .copy-btn:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.18); }
+    .copy-btn:active { transform: scale(0.96); }
+    .copy-btn svg { width: 16px; height: 16px; }
+
+    .hint {
+      margin-top: 12px;
+      font-size: 11px;
+      color: #7a8496;
+      letter-spacing: 0.02em;
+    }
+    .hint-launch {
+      margin-top: 14px;
+      font-size: 12.5px;
+      color: #d6dce8;
+      letter-spacing: -0.01em;
+    }
+    .hint-launch code {
+      font-family: ui-monospace, SFMono-Regular, "JetBrains Mono", Menlo, monospace;
+      font-size: 12.5px;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      padding: 1px 6px;
+      border-radius: 6px;
+      color: #e6eaf2;
+    }
+    .hint-sub {
+      margin-top: 6px;
+      font-size: 11px;
+      color: #7a8496;
+      letter-spacing: 0.02em;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(8px);
+      background: #1a212e;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #e8ebf1;
+      font-size: 12px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s, transform 0.2s;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @media (max-height: 560px) {
+      .logo { margin-top: 0; margin-bottom: 12px; }
+      h1 { margin-bottom: 18px; }
+      .motto { font-size: 18px; margin-bottom: 28px; }
+      .desc { margin-bottom: 22px; }
+    }
+    @media (max-width: 480px) {
+      h1 { font-size: 24px; }
+      .desc { font-size: 12.5px; padding: 0 4px; }
+      .cmd-wrap code { font-size: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page" role="main">
+    <!-- logo -->
+    <div class="logo" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g stroke="#5b9dd9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none">
+          <path d="M16 4 L6 9.5 L16 15 L26 9.5 Z"/>
+          <path d="M6 15 L16 20.5 L26 15"/>
+          <path d="M6 20 L16 25.5 L26 20"/>
+        </g>
+      </svg>
+    </div>
+
+    <h1>Codivizer</h1>
+
+    <p class="motto">Understand the code. See the system.</p>
+
+    <p class="desc">
+      <strong>Codivizer</strong> is an interactive codebase explorer designed to help developers understand unfamiliar and complex repositories. Instead of navigating file by file, explore architecture, dependencies, symbols and execution traces through an interactive visual map.
+    </p>
+
+    <div class="cmd-wrap" role="group" aria-label="Install command">
+      <code id="cmd"><span>$</span> npm install -g codivizer</code>
+      <button class="copy-btn" id="copyBtn" aria-label="Copy command" title="Copy">
+        <svg id="copyIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="9" y="9" width="11" height="11" rx="2"></rect>
+          <path d="M15 9V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path>
+        </svg>
+        <svg id="checkIcon" style="display:none" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M5 13l4 4L19 7"></path>
+        </svg>
+      </button>
+    </div>
+    <div class="hint-launch">type <code>codivizer</code> in your repository terminal to launch the app</div>
+    <div class="hint-sub">requires Node.js 20+ · no config needed</div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">Copied to clipboard</div>
+
+  <script>
+    (function () {
+      var btn = document.getElementById('copyBtn');
+      var code = document.getElementById('cmd');
+      var toast = document.getElementById('toast');
+      var copyIcon = document.getElementById('copyIcon');
+      var checkIcon = document.getElementById('checkIcon');
+      var cmdText = 'npm install -g codivizer';
+
+      function showToast() {
+        toast.classList.add('show');
+        copyIcon.style.display = 'none';
+        checkIcon.style.display = 'block';
+        setTimeout(function () {
+          toast.classList.remove('show');
+          copyIcon.style.display = 'block';
+          checkIcon.style.display = 'none';
+        }, 1600);
+      }
+
+      btn.addEventListener('click', async function () {
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(cmdText);
+          } else {
+            var ta = document.createElement('textarea');
+            ta.value = cmdText;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+          }
+          showToast();
+        } catch (e) {
+          // fallback: select text for manual copy
+          var range = document.createRange();
+          range.selectNodeContents(code);
+          var sel = window.getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
