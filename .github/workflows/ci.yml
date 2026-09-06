@@ -46,8 +46,13 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Install
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+      - name: Install (root)
         run: npm ci
+      - name: Install (web)
+        run: npm --prefix web ci
       - name: Build
         run: npm run build
       - name: Verify zero-prereq (no Python/Go on PATH)
