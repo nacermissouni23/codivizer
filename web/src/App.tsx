@@ -205,7 +205,7 @@ export default function App() {
     fetch('/api/repo')
       .then((r) => r.json())
       .then(setRepo)
-      .catch(() => setError('Could not reach the Archivizer server.'));
+      .catch(() => setError('Could not reach the Codivizer server.'));
     fetch('/api/tree')
       .then((r) => r.json())
       .then(setTree)
@@ -268,7 +268,7 @@ export default function App() {
       <div className="titlebar">
         <div className="titlebar-brand">
           <Layers size={16} strokeWidth={1.8} />
-          Archivizer
+          Codivizer
         </div>
         {repo && (
           <div className="titlebar-project">

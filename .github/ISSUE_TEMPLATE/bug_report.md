@@ -12,4 +12,4 @@ labels: bug
 
 **Screenshots**
 
-**Env:** OS, Node version, `Archivizer --help` output
+**Env:** OS, Node version, `Codivizer --help` output

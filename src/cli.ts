@@ -60,7 +60,7 @@ export function parseArgs(argv: string[]): CliArgs {
       const raw = argv[++i];
       const n = Number(raw);
       if (!Number.isInteger(n) || n < 0 || n > 65535) {
-        console.error(`archivizer: invalid --port value "${raw}" (must be integer 0-65535).`);
+        console.error(`codivizer: invalid --port value "${raw}" (must be integer 0-65535).`);
         process.exit(1);
       }
       port = n;
@@ -103,10 +103,10 @@ export function parseArgs(argv: string[]): CliArgs {
 
 export function printHelp(): void {
   const v = getVersion();
-  console.log(`archivizer v${v} - local-first code architecture explorer
+  console.log(`codivizer v${v} - local-first code architecture explorer
 
 USAGE
-  archivizer [path] [flags]
+  codivizer [path] [flags]
 
 FLAGS
   --port, -p <N>      port to bind (default 4840; auto-fallback if busy)
@@ -119,15 +119,15 @@ FLAGS
   --help, -h          print this help
 
 EXAMPLES
-  archivizer
-  archivizer .
-  archivizer /path/to/project --port 5000 --no-open
-  archivizer ~/code/my-app --include-hidden
+  codivizer
+  codivizer .
+  codivizer /path/to/project --port 5000 --no-open
+  codivizer ~/code/my-app --include-hidden
 
 Run a server, browse the indexed graph at http://127.0.0.1:<port>.
 `);
 }
 
 export function printVersion(): void {
-  console.log(`archivizer v${getVersion()}`);
+  console.log(`codivizer v${getVersion()}`);
 }

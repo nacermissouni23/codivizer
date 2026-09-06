@@ -1,10 +1,10 @@
 # Changelog
 
-All notable changes to Archivizer.
+All notable changes to Codivizer.
 
 ## [0.2.1] - 2026-09-06
 ### Fixed
-- **Crash on start**: `FST_ERR_PLUGIN_VERSION_MISMATCH` — `@fastify/rate-limit@10` requires fastify 5.x but Archivizer uses fastify 4.29.1. Downgraded to `@fastify/rate-limit@8.0.3` (fastify 4 compatible). `Archivizer` now starts on all OSes with zero prereqs.
+- **Crash on start**: `FST_ERR_PLUGIN_VERSION_MISMATCH` — `@fastify/rate-limit@10` requires fastify 5.x but Codivizer uses fastify 4.29.1. Downgraded to `@fastify/rate-limit@8.0.3` (fastify 4 compatible). `Codivizer` now starts on all OSes with zero prereqs.
 
 ## [0.2.0] - 2026-09-06
 
@@ -12,7 +12,7 @@ All notable changes to Archivizer.
 - **Zero-prerequisite install**: pyright bundled, gopls vendored for win32-x64/linux-x64/darwin-x64/darwin-arm64, tree-sitter WASMs bundled (~36 grammars). Works on any new PC with just Node 20+.
 - **File watcher** (default ON): auto-reindex on filesystem changes via `chokidar` with 500 ms debounce. Pass `--no-watch` to disable. Toggle in Settings UI.
 - **15+ manifest formats** with real parsers: `@iarna/toml` for `pyproject.toml`/`Cargo.toml`, `fast-xml-parser` for `pom.xml`, plus `vcpkg.json`, `conanfile.txt`, `deno.json`, `mix.exs`, `*.rockspec`, `Directory.Packages.props`, deep `composer.json` walk, monorepo workspace detection.
-- **Real gitignore** via `ignore` package: globs, negations, CRLF, per-directory `.gitignore`, plus new `.archivizerignore`.
+- **Real gitignore** via `ignore` package: globs, negations, CRLF, per-directory `.gitignore`, plus new `.codivizerignore`.
 - **Encoding detection** via `iconv-lite`: BOM-aware (UTF-8, UTF-16 LE/BE), fallback to UTF-8.
 - **Binary detection**: extension allowlist (~80 types) + null-byte sniff; binary files appear in tree but not parsed.
 - **20 MB file size cap** per file; larger files included in tree but skipped for indexing.

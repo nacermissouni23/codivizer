@@ -82,7 +82,7 @@ async function main() {
     const st = await fs.stat(target);
     if (!st.isDirectory()) throw new Error('not a directory');
   } catch {
-    console.error(`Archivizer: "${target}" is not a readable folder.`);
+    console.error(`Codivizer: "${target}" is not a readable folder.`);
     process.exit(1);
   }
 
@@ -540,7 +540,7 @@ async function main() {
     const base = rel.split('/').pop() ?? rel;
     if ([
       '.env', '.env.local', '.env.development', '.env.production',
-      '.archivizerignore',
+      '.codivizerignore',
     ].includes(base) || /\.(pem|key|p12|pfx|gpg|asc)$/i.test(base) || /^id_(rsa|dsa|ecdsa|ed25519)/.test(base)) {
       return reply.code(400).send({ error: 'sensitive file' });
     }
@@ -572,7 +572,7 @@ async function main() {
   } catch {
     app.get('/', async (_req, reply) => {
       reply.type('text/html; charset=utf-8').send(
-        '<body style="background:#10141b;color:#e8ebf1;font-family:monospace;padding:40px">Frontend assets missing in this install. Reinstall Archivizer, or run <code>npm run build</code> in the repo and use <code>npm start</code>.</body>'
+        '<body style="background:#10141b;color:#e8ebf1;font-family:monospace;padding:40px">Frontend assets missing in this install. Reinstall Codivizer, or run <code>npm run build</code> in the repo and use <code>npm start</code>.</body>'
       );
     });
   }
@@ -592,13 +592,13 @@ async function main() {
     }
   }
   if (!bound) {
-    console.error(`  Archivizer: ports ${port}–${port + MAX_PORT_TRIES - 1} are all busy. Pass --port <n>.`);
+    console.error(`  Codivizer: ports ${port}–${port + MAX_PORT_TRIES - 1} are all busy. Pass --port <n>.`);
     process.exit(1);
   }
   port = bound;
 
   const url = `http://127.0.0.1:${port}`;
-  console.log(`\n  Archivizer - indexing ${rootName}`);
+  console.log(`\n  Codivizer - indexing ${rootName}`);
   console.log(`  ${url}`);
   console.log(`  watch: ${watchEnabled ? 'ON' : 'OFF'}${includeHidden ? ' (hidden: included)' : ''}\n`);
 
@@ -654,6 +654,6 @@ const IGNORED_WATCH = new Set([
 const HIDDEN_WATCH_ALLOW = new Set(['.github', '.vscode', '.editorconfig']);
 
 main().catch((e) => {
-  console.error('  Archivizer: fatal -', String(e));
+  console.error('  Codivizer: fatal -', String(e));
   process.exit(1);
 });

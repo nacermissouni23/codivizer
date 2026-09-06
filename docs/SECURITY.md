@@ -2,17 +2,17 @@
 
 ## Threat model
 
-- Archivizer is a **local-only** server bound to `127.0.0.1`. No network exposure beyond localhost.
+- Codivizer is a **local-only** server bound to `127.0.0.1`. No network exposure beyond localhost.
 - No authentication is required because localhost access implies user access.
 - Sensitive files are never indexed or served via `/api/file`.
 
-## What Archivizer indexes
+## What Codivizer indexes
 
-- All non-ignored files up to 20 MB in the target directory, respecting `.gitignore` and `.archivizerignore`.
+- All non-ignored files up to 20 MB in the target directory, respecting `.gitignore` and `.codivizerignore`.
 - Manifest files for dependency detection.
 - Framework signatures are local (no network).
 
-## What Archivizer does NOT index
+## What Codivizer does NOT index
 
 - `node_modules`, `.git`, `dist`, `build`, `.venv`, `.aws`, `.ssh`, `.gnupg`, `.kube`, `.docker`, `.terraform` — skipped by walker.
 - Sensitive files: `.env*`, `*.pem`, `*.key`, `*.p12`, `*.pfx`, `id_rsa*`, `credentials.json`, etc. — skipped and blocked via `/api/file`.
