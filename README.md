@@ -1,11 +1,11 @@
-# Archiviz
+# Archivizer
 
 Local-first, deterministic code architecture explorer. Everything runs on your machine. Optional AI adds human-readable labels — your code never leaves the device, only an anonymous graph summary is sent for labeling.
 
-![Archiviz - Repository to architecture map](assets/components.png)
+![Archivizer - Repository to architecture map](assets/components.png)
 
 ```bash
-npx @nacermissouni23/archiviz /path/to/your/project
+npx archivizer /path/to/your/project
 ```
 
 Then open **http://127.0.0.1:4840** (opens automatically).
@@ -14,7 +14,7 @@ Then open **http://127.0.0.1:4840** (opens automatically).
 
 ## Zero prerequisites
 
-Archiviz works out of the box on any new PC — Windows, macOS, or Linux — with just Node.js 20+:
+Archivizer works out of the box on any new PC — Windows, macOS, or Linux — with just Node.js 20+:
 
 - **Pyright** (Python) is bundled as pure JS — no Python install required.
 - **gopls** (Go) is vendored for win32-x64, linux-x64, darwin-x64, darwin-arm64 — no Go install required (falls back to `gopls` on PATH if you have it).
@@ -22,7 +22,7 @@ Archiviz works out of the box on any new PC — Windows, macOS, or Linux — wit
 - **Frontend** is prebuilt (Vite + React + Mermaid).
 
 ```bash
-npx @nacermissouni23/archiviz ~/code/my-project
+npx archivizer ~/code/my-project
 # works immediately on Windows, macOS, Linux (x64 + arm64)
 ```
 
@@ -31,7 +31,7 @@ npx @nacermissouni23/archiviz ~/code/my-project
 ## What it does
 
 ```text
-npx @nacermissouni23/archiviz <folder>
+npx archivizer <folder>
    ↓
 localhost web app
    ↓
@@ -53,7 +53,7 @@ Drill down:  Repository → Folder → File → Class → Function → source co
 
 ## Supported languages
 
-Archiviz uses **four indexing engines** to cover 30+ languages:
+Archivizer uses **four indexing engines** to cover 30+ languages:
 
 | Engine | Languages | Indexing quality |
 |--------|-----------|-----------------|
@@ -64,13 +64,13 @@ Archiviz uses **four indexing engines** to cover 30+ languages:
 
 **Manifest parsers** also detect dependencies from: `package.json`, `requirements.txt`, `pyproject.toml`, `go.mod`, `pom.xml`, `build.gradle`, `Cargo.toml`, `composer.json`, `Gemfile`, `*.csproj`, `Directory.Packages.props`, `vcpkg.json`, `conanfile.txt`, `deno.json`, `import_map.json`, `mix.exs`, `*.rockspec`.
 
-> If the source code says it, Archiviz knows it. If Archiviz doesn't know it, it doesn't invent it.
+> If the source code says it, Archivizer knows it. If Archivizer doesn't know it, it doesn't invent it.
 
 ---
 
 ## The six levels of understanding
 
-Archiviz indexes your code once and derives six progressive views:
+Archivizer indexes your code once and derives six progressive views:
 
 | Level | View | What it shows |
 |-------|------|---------------|
@@ -88,30 +88,30 @@ Archiviz indexes your code once and derives six progressive views:
 ```bash
 # add your Gemini key once (stored in ~/.archi/config.json)
 # get a key at https://aistudio.google.com/app/apikey
-ARCHI_AI_KEY=AIza... archiviz /path/to/project
+ARCHI_AI_KEY=AIza... Archivizer /path/to/project
 # or set it in .env / ~/.archi/config.json via the Settings UI
 ```
 
-One merged AI call per indexing (~5k chars) annotates all three views: Component Overview, System Context, and Repository Brief. If the key is missing or invalid, Archiviz works fully with deterministic plain labels. Badges show `AI annotating…` → `AI annotated` or `AI failed: <reason>` (hover for details). Only Google AI Studio API keys are supported for now.
+One merged AI call per indexing (~5k chars) annotates all three views: Component Overview, System Context, and Repository Brief. If the key is missing or invalid, Archivizer works fully with deterministic plain labels. Badges show `AI annotating…` → `AI annotated` or `AI failed: <reason>` (hover for details). Only Google AI Studio API keys are supported for now.
 
-**Privacy:** Archiviz builds the graph locally. Only the graph summary (folder names, top symbols, system kinds — no file contents) is sent to Google for labeling. See Settings for details.
+**Privacy:** Archivizer builds the graph locally. Only the graph summary (folder names, top symbols, system kinds — no file contents) is sent to Google for labeling. See Settings for details.
 
 ---
 
 ## CLI options
 
 ```text
-archiviz [path]         folder to index immediately
-archiviz --port 5000    custom port (default 4840)
-archiviz --no-open      don't auto-open the browser
-archiviz --no-watch     disable filesystem watch (watch is ON by default)
-archiviz --watch        enable watch (default)
-archiviz --include-hidden  include dotfiles
-archiviz --version      print version
+Archivizer [path]         folder to index immediately
+Archivizer --port 5000    custom port (default 4840)
+Archivizer --no-open      don't auto-open the browser
+Archivizer --no-watch     disable filesystem watch (watch is ON by default)
+Archivizer --watch        enable watch (default)
+Archivizer --include-hidden  include dotfiles
+Archivizer --version      print version
 # archi works too as an alias
 ```
 
-You can also start without a path (`npx @nacermissouni23/archiviz`) and paste one into the UI.
+You can also start without a path (`npx archivizer`) and paste one into the UI.
 
 ---
 
@@ -247,13 +247,13 @@ RELEASE_BUILD=1 npm run fetch-gopls -- --force
 
 - More languages and framework signatures
 - Export (PNG/SVG, JSON graph)
-- See `CHANGELOG.md` and [GitHub Discussions](https://github.com/nacermissouni23/Archiviz/discussions)
+- See `CHANGELOG.md` and [GitHub Discussions](https://github.com/nacermissouni23/archivizer/discussions)
 
 ---
 
 ## Contributing
 
-Archiviz is open source (MIT). Contributions welcome.
+Archivizer is open source (MIT). Contributions welcome.
 
 1. Fork the repo
 2. Create a feature branch (`git checkout -b feature/my-feature`)
@@ -276,7 +276,7 @@ Add a parser in `src/index/manifests.ts` and register it in `ROOT_MANIFEST_PARSE
 
 **Adding framework awareness:**
 
-Add entries to `SYSTEM_SIGNATURES` in `src/index/context.ts`. Each entry maps a package name to its known symbols (classes, functions, constants). This enables Archiviz to recognize framework calls even when the framework source isn't indexed.
+Add entries to `SYSTEM_SIGNATURES` in `src/index/context.ts`. Each entry maps a package name to its known symbols (classes, functions, constants). This enables Archivizer to recognize framework calls even when the framework source isn't indexed.
 
 ---
 

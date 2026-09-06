@@ -1,16 +1,16 @@
 {
-  "name": "@nacermissouni23/archiviz",
+  "name": "archivizer",
   "version": "0.2.1",
   "type": "module",
   "description": "Local-first, deterministic code architecture explorer",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/nacermissouni23/Archiviz.git"
+    "url": "https://github.com/nacermissouni23/archivizer.git"
   },
-  "homepage": "https://github.com/nacermissouni23/Archiviz#readme",
+  "homepage": "https://github.com/nacermissouni23/archivizer#readme",
   "bugs": {
-    "url": "https://github.com/nacermissouni23/Archiviz/issues"
+    "url": "https://github.com/nacermissouni23/archivizer/issues"
   },
   "keywords": [
     "architecture",
@@ -20,7 +20,8 @@
     "explorer"
   ],
   "bin": {
-    "archiviz": "bin/archi.js",
+    "archivizer": "bin/archi.js",
+    "archivizer-cli": "bin/archi.js",
     "archi": "bin/archi.js"
   },
   "files": [

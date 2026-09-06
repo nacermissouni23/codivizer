@@ -11,7 +11,7 @@ What leaves the machine: folder names, top symbols, system kinds, edge counts. N
 ## Server
 
 ```bash
-archiviz [path] --port 5000 --no-open
+Archivizer [path] --port 5000 --no-open
 ```
 
 Dist is served from `dist/web` on `127.0.0.1` only. File reads are blocked for `.env`, `*.pem`, etc.

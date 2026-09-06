@@ -16,7 +16,7 @@ const IGNORED_DIRS = new Set([
 
 const SENSITIVE_FILES = new Set([
   '.env', '.env.local', '.env.development', '.env.production', '.env.test',
-  '.archivizignore',
+  '.archivizerignore',
 ]);
 
 const SENSITIVE_PATTERNS: RegExp[] = [
@@ -43,7 +43,7 @@ const BINARY_EXTS = new Set([
 
 const HIDDEN_ALLOWLIST = new Set([
   '.github', '.vscode', '.editorconfig', '.gitignore', '.gitattributes',
-  '.archivizignore', '.eslintrc', '.prettierrc', '.npmrc',
+  '.archivizerignore', '.eslintrc', '.prettierrc', '.npmrc',
 ]);
 
 /** Detect encoding by BOM; return {encoding, bomSize} or null if ASCII/UTF-8. */
@@ -102,11 +102,15 @@ async function readGitignore(dir: string): Promise<string> {
   }
 }
 
-async function readArchivizignore(dir: string): Promise<string> {
+async function readArchivizerignore(dir: string): Promise<string> {
   try {
-    return await fs.readFile(path.join(dir, '.archivizignore'), 'utf8');
+    return await fs.readFile(path.join(dir, '.archivizerignore'), 'utf8');
   } catch {
-    return '';
+    try {
+      return await fs.readFile(path.join(dir, '.archivizignore'), 'utf8');
+    } catch {
+      return '';
+    }
   }
 }
 
@@ -117,7 +121,7 @@ export interface WalkOptions {
 export async function walkDir(root: string, opts: WalkOptions = {}): Promise<TreeNode> {
   const includeHidden = opts.includeHidden ?? false;
   const rootGitignore = ignore().add(await readGitignore(root));
-  const rootArchiviz = ignore().add(await readArchivizignore(root));
+  const rootArchivizer = ignore().add(await readArchivizerignore(root));
   const visited = new Set<string>();
 
   async function walk(absDir: string, relPrefix: string, depth: number): Promise<TreeNode[]> {
@@ -140,8 +144,8 @@ export async function walkDir(root: string, opts: WalkOptions = {}): Promise<Tre
 
     const localGitignore =
       depth === 0 ? rootGitignore : ignore().add(await readGitignore(absDir));
-    const localArchiviz =
-      depth === 0 ? rootArchiviz : ignore().add(await readArchivizignore(absDir));
+    const localArchivizer =
+      depth === 0 ? rootArchivizer : ignore().add(await readArchivizerignore(absDir));
 
     const nodes: TreeNode[] = [];
     for (const entry of entries) {
@@ -152,14 +156,14 @@ export async function walkDir(root: string, opts: WalkOptions = {}): Promise<Tre
       if (entry.isDirectory()) {
         if (IGNORED_DIRS.has(name)) continue;
         if (!includeHidden && isHidden && !HIDDEN_ALLOWLIST.has(name)) continue;
-        if (localGitignore.ignores(rel) || localArchiviz.ignores(rel)) continue;
+        if (localGitignore.ignores(rel) || localArchivizer.ignores(rel)) continue;
         const children = await walk(path.join(absDir, name), rel, depth + 1);
         if (children.length === 0) continue;
         nodes.push({ name, path: rel, type: 'dir', children });
       } else if (entry.isFile()) {
         if (isSensitiveName(name)) continue;
         if (!includeHidden && isHidden && !HIDDEN_ALLOWLIST.has(name)) continue;
-        if (localGitignore.ignores(rel) || localArchiviz.ignores(rel)) continue;
+        if (localGitignore.ignores(rel) || localArchivizer.ignores(rel)) continue;
         const ext = path.extname(name).toLowerCase();
         if (isBinaryExt(ext)) {
           // binary files still appear in tree as files (so UI can show them), no ext symbol extraction

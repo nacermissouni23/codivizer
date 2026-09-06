@@ -2,7 +2,7 @@
 
 ## Our Pledge
 
-We pledge to make participation in Archiviz welcoming for everyone.
+We pledge to make participation in Archivizer welcoming for everyone.
 
 ## Standards
 

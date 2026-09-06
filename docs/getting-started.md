@@ -1,10 +1,10 @@
 # Getting Started
 
 ```bash
-npx @nacermissouni23/archiviz /path/to/your/project
+npx archivizer /path/to/your/project
 # or
-npm install -g @nacermissouni23/archiviz
-archiviz /path/to/your/project
+npm install -g archivizer
+Archivizer /path/to/your/project
 ```
 
 Open http://127.0.0.1:4840 (opens automatically). Use `--port 5000` and `--no-open` as needed.

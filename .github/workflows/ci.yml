@@ -57,7 +57,7 @@ jobs:
         run: npm run build
       - name: Verify zero-prereq (no Python/Go on PATH)
         run: |
-          # Ensure archiviz would work even without Python/Go by checking resolver fallback
+          # Ensure Archivizer would work even without Python/Go by checking resolver fallback
           node -e "
             import('./dist/index/goplsResolver.js').then(m=>{
               try { const r=m.resolveGopls(); console.log('gopls:', r.source, r.command); } catch(e){ console.log('gopls fallback:', e.message.slice(0,120)); }

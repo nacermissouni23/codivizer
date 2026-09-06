@@ -1,4 +1,4 @@
-# Contributing to Archiviz
+# Contributing to Archivizer
 
 Thanks for considering a contribution! This is a local-first, deterministic code explorer — help us keep it simple and accurate.
 
@@ -66,7 +66,7 @@ npm run dev       # tsx watch
 
 ## Adding framework awareness
 
-Add entries to `SYSTEM_SIGNATURES` in `src/index/context.ts`. Each entry maps a package name to its known symbols (classes, functions, constants). This lets Archiviz recognize framework calls even when the framework source isn't indexed.
+Add entries to `SYSTEM_SIGNATURES` in `src/index/context.ts`. Each entry maps a package name to its known symbols (classes, functions, constants). This lets Archivizer recognize framework calls even when the framework source isn't indexed.
 
 ## Code style
 

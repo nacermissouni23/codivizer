@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Idea for Archiviz
+about: Idea for Archivizer
 labels: enhancement
 ---
 
