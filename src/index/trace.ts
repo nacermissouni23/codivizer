@@ -11,11 +11,14 @@ export interface TraceResult {
   entry: { id: string; name: string; fileId: string; startLine: number; kind: string };
   steps: TraceStep[];
   truncated: boolean;
+  truncatedAt?: number;
+  maxDepth: number;
 }
+
+export const MAX_TRACE_DEPTH = 50;
 
 function signatureLabel(callee: Sym): string {
   const raw = callee.signature;
-  // extract name and params: e.g. "function run(goal, depth)" → "run(goal, …)"
   const m = raw.match(/^\s*(?:async\s+)?(?:\w+\s+)?(\w+)\s*\(([^)]*)\)/);
   if (!m) return callee.name;
   const name = m[1];
@@ -35,11 +38,18 @@ export function traceCallChain(
   if (!entry) return null;
 
   const steps: TraceStep[] = [];
-  const visited = new Set<string>(); // cycle guard: current path
-  const seenEdges = new Set<string>(); // dedup edges
+  const visited = new Set<string>();
+  const seenEdges = new Set<string>();
   let seq = 0;
+  let truncated = false;
+  let truncatedAt = 0;
 
-  function dfs(symId: string) {
+  function dfs(symId: string, depth: number) {
+    if (depth > MAX_TRACE_DEPTH) {
+      truncated = true;
+      truncatedAt = steps.length;
+      return;
+    }
     const callees = store.getCallees(symId);
     for (const edge of callees) {
       if (edge.type !== 'calls') continue;
@@ -49,11 +59,9 @@ export function traceCallChain(
 
       const callee = store.getSymbol(edge.dst);
       if (!callee) continue;
-
       const caller = store.getSymbol(symId);
       if (!caller) continue;
 
-      // cycle guard: if dst is on current path, skip recursion
       if (visited.has(edge.dst)) {
         seq++;
         steps.push({
@@ -74,18 +82,20 @@ export function traceCallChain(
       });
 
       visited.add(edge.dst);
-      dfs(edge.dst);
+      dfs(edge.dst, depth + 1);
       visited.delete(edge.dst);
     }
   }
 
   visited.add(entryId);
-  dfs(entryId);
+  dfs(entryId, 1);
 
   return {
     entry: { id: entry.id, name: entry.name, fileId: entry.fileId, startLine: entry.startLine, kind: entry.kind },
     steps,
-    truncated: false,
+    truncated,
+    truncatedAt: truncated ? truncatedAt : undefined,
+    maxDepth: MAX_TRACE_DEPTH,
   };
 }
 

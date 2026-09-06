@@ -133,10 +133,13 @@ function RawView({
   selectedSymbolId: string | null;
   onSymbolClick: (id: string) => void;
 }) {
+  const [wrap, setWrap] = useState(false);
+  const [filter, setFilter] = useState('');
   const lines = content.split(/\r?\n/);
   const selected = symbols.find((s) => s.id === selectedSymbolId);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const programmaticScroll = useRef<number>(0);
+  const filteredLines = filter ? lines.map((l, i) => ({ line: l, n: i + 1 })).filter(({ line }) => line.toLowerCase().includes(filter.toLowerCase())) : null;
 
   useEffect(() => {
     if (!selected || !bodyRef.current) return;
@@ -182,6 +185,14 @@ function RawView({
 
   return (
     <>
+      <div className="code-toolbar" style={{ display: 'flex', gap: 8, padding: '6px 10px', alignItems: 'center', borderBottom: '1px solid var(--border)', fontSize: 12 }}>
+        <span style={{ color: 'var(--text-2)' }}>UTF-8</span>
+        <label style={{ display: 'flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}>
+          <input type="checkbox" checked={wrap} onChange={(e) => setWrap(e.target.checked)} /> wrap
+        </label>
+        <input placeholder="Find in file (Ctrl+F)" value={filter} onChange={(e) => setFilter(e.target.value)} style={{ flex: 1, maxWidth: 220, padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-1)', fontSize: 12 }} />
+        {filter && <span style={{ color: 'var(--text-2)' }}>{filteredLines?.length} matches</span>}
+      </div>
       {symbols.length > 0 && (
         <div className="sym-strip">
           {symbols.map((s) => (
@@ -195,7 +206,7 @@ function RawView({
           ))}
         </div>
       )}
-      <div className="code-body" ref={bodyRef}>
+      <div className="code-body" ref={bodyRef} style={wrap ? { whiteSpace: 'pre-wrap', wordBreak: 'break-all' } as any : undefined}>
         <div className="code-gutter">
           {lines.map((_, i) => (
             <div key={i}>{i + 1}</div>

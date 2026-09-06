@@ -58,7 +58,7 @@ export default function Inspector({
 
   return (
     <div className="inspector" style={{ width }}>
-      <div className="inspector-header">Inspector</div>
+      <div className="inspector-header">Inspector <span style={{ fontSize: 10, color: 'var(--text-3)', marginLeft: 6, border: '1px solid var(--border)', borderRadius: 4, padding: '1px 5px' }}>confidence: high</span></div>
       {!symbolId || error ? (
         <div className="inspector-empty">
           <div>
@@ -100,6 +100,7 @@ export default function Inspector({
             <Activity size={14} strokeWidth={2} />
             Trace flow
           </button>
+          <button className="btn-trace" style={{ marginTop: 6 }} onClick={() => onNavigate(data.symbol.id)} title="Go to definition">Go to definition → {data.symbol.fileId}:{data.symbol.startLine}</button>
 
           <div className="insp-section">
             <div className="insp-section-title">

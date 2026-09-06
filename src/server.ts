@@ -1,12 +1,12 @@
-import { promises as fs, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { promises as fs, readFileSync, writeFileSync, mkdirSync, rmSync, chmodSync } from 'node:fs';
 import * as os from 'node:os';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+import fastifyRateLimit from '@fastify/rate-limit';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { networkInterfaces } from 'node:os';
-import { walkDir } from './walk.js';
-import { parseArgs } from './cli.js';
+import { walkDir, MAX_FILE_SIZE_BYTES, isBinaryExt } from './walk.js';
+import { parseArgs, printHelp, printVersion } from './cli.js';
 import { GraphStore } from './index/store.js';
 import { indexRepo } from './index/tsIndexer.js';
 import { buildOverview, type OverviewData } from './index/overview.js';
@@ -18,7 +18,7 @@ import { loadManifests } from './index/manifests.js';
 import { indexPython } from './index/pyEngine.js';
 import { indexGo } from './index/goEngine.js';
 import { indexTreeSitter, getTreeSitterLang } from './index/treeSitterEngine.js';
-import { traceCallChain, findEntryPoints } from './index/trace.js';
+import { traceCallChain, findEntryPoints, MAX_TRACE_DEPTH } from './index/trace.js';
 import type { TreeNode } from './types.js';
 
 // minimal .env loader (no dependency): fills process.env without overriding existing
@@ -63,11 +63,21 @@ async function fingerprint(target: string): Promise<string> {
 
 let indexedFingerprint = '';
 
-const parsed = parseArgs(process.argv.slice(2));
-const { target, open } = parsed;
-let port = parsed.port;
+async function main() {
+  const argv = process.argv.slice(2);
+  const parsed = parseArgs(argv);
+  if (parsed.help) { printHelp(); return; }
+  if (parsed.version) { printVersion(); return; }
 
-async function validateTarget() {
+  loadDotEnv();
+
+  const target = parsed.target;
+  let port = parsed.port;
+  const openBrowser = parsed.open;
+  const watchEnabled = parsed.watch;
+  const includeHidden = parsed.includeHidden;
+
+  // Validate target
   try {
     const st = await fs.stat(target);
     if (!st.isDirectory()) throw new Error('not a directory');
@@ -75,16 +85,18 @@ async function validateTarget() {
     console.error(`archiviz: "${target}" is not a readable folder.`);
     process.exit(1);
   }
-}
 
-async function main() {
-  loadDotEnv();
-  await validateTarget();
-
-  const app = Fastify({ logger: false });
+  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
   app.addHook('onSend', async (_req, reply) => {
-    reply.header('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;");
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self';"
+    );
     reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('Referrer-Policy', 'no-referrer');
+  });
+  await app.register(fastifyRateLimit, {
+    global: false,
   });
   const rootName = path.basename(target);
 
@@ -110,6 +122,10 @@ async function main() {
       if (key) {
         mkdirSync(path.dirname(configPath), { recursive: true });
         writeFileSync(configPath, JSON.stringify({ ARCHI_AI_KEY: key }, null, 2), 'utf8');
+        // best-effort permission tightening
+        if (process.platform !== 'win32') {
+          try { chmodSync(configPath, 0o600); } catch { /* ignore */ }
+        }
       } else {
         rmSync(configPath, { force: true });
       }
@@ -120,7 +136,9 @@ async function main() {
 
   app.get('/api/ai/status', async () => ({ hasKey: Boolean(getApiKey()) }));
 
-  app.post('/api/ai/key', async (req, reply) => {
+  app.post('/api/ai/key', {
+    config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+  }, async (req, reply) => {
     const key = String((req.body as any)?.key ?? '').trim();
     if (!key) return reply.code(400).send({ error: 'missing key' });
     persistKey(key);
@@ -141,7 +159,7 @@ async function main() {
   app.get('/api/repo', async () => ({ name: rootName }));
 
   app.get('/api/tree', async () => {
-    const tree = await walkDir(target);
+    const tree = await walkDir(target, { includeHidden });
     return tree;
   });
 
@@ -179,7 +197,6 @@ async function main() {
       if (!result) throw new Error('AI returned empty result');
       const hasOv = Object.values(result.overview.components).some(v => v.label || v.description);
       if (!hasOv) throw new Error('AI returned empty annotations');
-      // apply all three
       lastAnnotations = result.overview;
       if (overview) { overview.annotations = result.overview; overview.ai = { pending: false, applied: true }; }
       lastContextAnnotations = result.context;
@@ -234,9 +251,18 @@ async function main() {
     if (aiPromise) await aiPromise;
   }
 
+  // ---- reindex with race protection + storage caps ----
+  const MAX_SYMBOLS_PER_FILE = 5_000;
+  const MAX_EDGES = 200_000;
+  type ReindexStats = ReturnType<GraphStore['stats']> & { truncated: boolean };
+  let reindexPromise: Promise<ReindexStats> | null = null;
+
   function reindex() {
-    return walkDir(target).then(async (tree) => {
+    if (reindexPromise) return reindexPromise;
+    const p = (async () => {
+      const tree = await walkDir(target, { includeHidden });
       const files = flatten(tree);
+      store.clear();
       indexRepo(target, files, store);
       loadManifests(target, files, store);
       const pyFiles = files.filter((f) => f.endsWith('.py'));
@@ -249,21 +275,22 @@ async function main() {
         }
       }
       const goFiles = files.filter((f) => f.endsWith('.go'));
+      let goSucceeded = false;
       if (goFiles.length > 0) {
         try {
           const go = await indexGo(target, goFiles, store);
           console.log(`  go: ${JSON.stringify(go)}`);
+          goSucceeded = true;
         } catch (e) {
-          console.warn(`  go engine skipped - ${String(e)}`);
+          console.warn(`  go engine skipped - ${String(e)}; falling back to tree-sitter for Go`);
         }
       }
-      // tree-sitter: index remaining languages not covered by TS/Python/Go LSPs
       const treeSitterLangs = new Set<string>();
       const treeSitterFiles = files.filter((f) => {
         const lang = getTreeSitterLang(f);
         if (!lang) return false;
-        // skip languages already handled by dedicated LSP engines
-        if (lang === 'python' || lang === 'go' || lang === 'typescript' || lang === 'javascript') return false;
+        if (lang === 'python' || lang === 'typescript' || lang === 'javascript') return false;
+        if (lang === 'go' && goSucceeded) return false;
         treeSitterLangs.add(lang);
         return true;
       });
@@ -275,6 +302,24 @@ async function main() {
           console.warn(`  tree-sitter engine skipped - ${String(e)}`);
         }
       }
+      // Enforce storage caps
+      let truncated = false;
+      const beforeEdges = store.edges.length;
+      if (beforeEdges > MAX_EDGES) {
+        // Trim oldest surplus edges
+        const surplus = store.edges.length - MAX_EDGES;
+        store.edges.splice(0, surplus);
+        truncated = true;
+      }
+      // Per-file symbol cap
+      for (const [fileId, ids] of store.symbolsByFile) {
+        if (ids.length > MAX_SYMBOLS_PER_FILE) {
+          const surplusIds = ids.slice(MAX_SYMBOLS_PER_FILE);
+          for (const id of surplusIds) store.nodes.delete(id);
+          store.symbolsByFile.set(fileId, ids.slice(0, MAX_SYMBOLS_PER_FILE));
+          truncated = true;
+        }
+      }
       indexedFingerprint = await fingerprint(target);
       rebuildOverview();
       rebuildContext();
@@ -283,30 +328,54 @@ async function main() {
         const needsAi = overview.ai.pending || contextData.ai.pending || storyData.ai.pending;
         if (needsAi) aiPromise = runAiAll().then(() => { aiPromise = null; });
       }
-      console.log(`  indexed: ${JSON.stringify(store.stats())}`);
-    });
+      const stats = store.stats();
+      console.log(`  indexed: ${JSON.stringify(stats)}${truncated ? ' (truncated)' : ''}`);
+      return { ...stats, truncated };
+    })().finally(() => { reindexPromise = null; });
+    reindexPromise = p;
+    return p;
   }
 
-  await reindex();
+  // SSE for index progress
+  app.get('/api/index/progress', async (_req, reply) => {
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+    });
+    const send = (data: object) => reply.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    send({ status: 'started', phase: 'walk' });
+    try {
+      const result = await reindex();
+      send({ status: 'done', ...result });
+    } catch (e) {
+      send({ status: 'error', error: String(e) });
+    }
+    reply.raw.end();
+    return reply;
+  });
 
-  app.get('/api/index/status', async () => ({ ready: true, ...store.stats() }));
+  // Initial reindex in background (don't block listen)
+  const initialReindex = reindex();
+  initialReindex.catch((e) => console.error('  initial index failed:', String(e)));
 
-  // ---- L2: component overview ----
+  app.get('/api/index/status', async () => {
+    const ready = !reindexPromise;
+    return { ready, indexing: !ready, ...store.stats() };
+  });
+
   app.get('/api/overview', async () => {
     return overview ?? { components: [], edges: [], allFolders: [], ai: { pending: false, applied: false } };
   });
 
-  // ---- L1: system context ----
   app.get('/api/context', async () => {
     return contextData ?? { name: rootName, stats: store.stats(), internals: [], externals: [], ai: { pending: false, applied: false } };
   });
 
-  // ---- L0: repository brief ----
   app.get('/api/brief', async () => {
     return buildBrief(store, rootName, target, overview, contextData);
   });
 
-  // ---- How it works narrative ----
   app.get('/api/story', async () => {
     return storyData ?? { segments: [], skeleton: {}, ai: { pending: false, applied: false } };
   });
@@ -321,10 +390,12 @@ async function main() {
     }
   });
 
-  app.post('/api/index/refresh', async (_req, reply) => {
+  app.post('/api/index/refresh', {
+    config: { rateLimit: { max: 1, timeWindow: '10 seconds' } },
+  }, async (_req, reply) => {
     try {
-      await reindex();
-      return { ok: true, ...store.stats() };
+      const result = await reindex();
+      return { ok: true, ...result };
     } catch (e) {
       return reply.code(500).send({ error: String(e) });
     }
@@ -357,7 +428,6 @@ async function main() {
     };
   });
 
-  // ---- L3: file dependency view ----
   app.get('/api/deps', async (req) => {
     const file = String((req.query as any).file ?? '');
     const base = (id: string) => id.split('/').pop() ?? id;
@@ -372,7 +442,6 @@ async function main() {
     return { file, dependencies, dependents };
   });
 
-  // ---- L2.5: folder-scoped file dependency graph ----
   app.get('/api/folderdeps', async (req) => {
     const dir = String((req.query as any).dir ?? '').replace(/\/+$/, '');
     const base = (id: string) => id.split('/').pop() ?? id;
@@ -414,7 +483,6 @@ async function main() {
       }
     }
 
-    // ensure external endpoint nodes exist
     for (const e of edgeMap.values()) {
       for (const f of [e.src, e.dst]) {
         if (!nodeMap.has(f)) nodeMap.set(f, { id: f, name: base(f), comp: compOf(f) });
@@ -437,7 +505,6 @@ async function main() {
     return { results: store.search(q, overview, contextData) };
   });
 
-  // ---- L4: execution flow trace ----
   app.get('/api/trace', async (req, reply) => {
     const id = String((req.query as any).id ?? '');
     if (!id || !id.includes(':')) {
@@ -454,19 +521,41 @@ async function main() {
     return { entryPoints: findEntryPoints(store) };
   });
 
+  app.get('/api/limits', async () => {
+    return {
+      maxFileSizeBytes: MAX_FILE_SIZE_BYTES,
+      maxTraceDepth: MAX_TRACE_DEPTH,
+      maxEdges: MAX_EDGES,
+      maxSymbolsPerFile: MAX_SYMBOLS_PER_FILE,
+      watching: watchEnabled,
+    };
+  });
+
+  // Path-traversal-safe file read with size cap
   app.get('/api/file', async (req, reply) => {
     const rel = String((req.query as any).path ?? '');
-    const base = rel.split('/').pop() ?? rel;
-    if (!rel || rel.includes('..') || path.isAbsolute(rel) || ['.env','.env.local','.env.development','.env.production'].includes(base) || /\.(pem|key)$/.test(base) || /id_rsa/.test(base)) {
+    if (!rel || rel.includes('..') || path.isAbsolute(rel)) {
       return reply.code(400).send({ error: 'invalid path' });
     }
-    const abs = path.join(target, rel);
+    const base = rel.split('/').pop() ?? rel;
+    if ([
+      '.env', '.env.local', '.env.development', '.env.production',
+      '.archivizignore',
+    ].includes(base) || /\.(pem|key|p12|pfx|gpg|asc)$/i.test(base) || /^id_(rsa|dsa|ecdsa|ed25519)/.test(base)) {
+      return reply.code(400).send({ error: 'sensitive file' });
+    }
+    const abs = path.resolve(target, rel);
+    const realRoot = await fs.realpath(target).catch(() => path.resolve(target));
+    const realFile = await fs.realpath(abs).catch(() => abs);
+    if (!realFile.startsWith(realRoot + path.sep) && realFile !== realRoot) {
+      return reply.code(400).send({ error: 'path traversal blocked' });
+    }
     try {
-      const st = await fs.stat(abs);
-      if (!st.isFile() || st.size > 2_000_000) {
+      const st = await fs.stat(realFile);
+      if (!st.isFile() || st.size > MAX_FILE_SIZE_BYTES) {
         return reply.code(400).send({ error: 'not a readable file' });
       }
-      const content = await fs.readFile(abs, 'utf8');
+      const content = await fs.readFile(realFile, 'utf8');
       return { path: rel, content };
     } catch {
       return reply.code(404).send({ error: 'not found' });
@@ -488,7 +577,7 @@ async function main() {
     });
   }
 
-  // ---- listen: auto-fallback if the port is taken (Vite-style) ----
+  // ---- listen: auto-fallback if the port is taken ----
   const MAX_PORT_TRIES = 10;
   let bound = 0;
   for (let attempt = 0; attempt < MAX_PORT_TRIES; attempt++) {
@@ -499,9 +588,7 @@ async function main() {
       break;
     } catch (e: any) {
       if (e?.code !== 'EADDRINUSE') throw e;
-      if (attempt === 0) {
-        console.log(`  port ${candidate} is busy, trying ${candidate + 1}…`);
-      }
+      if (attempt === 0) console.log(`  port ${candidate} is busy, trying ${candidate + 1}…`);
     }
   }
   if (!bound) {
@@ -512,15 +599,61 @@ async function main() {
 
   const url = `http://127.0.0.1:${port}`;
   console.log(`\n  Archiviz - indexing ${rootName}`);
-  console.log(`  ${url}\n`);
-  if (open) {
-    const { exec } = await import('node:child_process');
-    const cmd =
-      process.platform === 'win32' ? `start "" "${url}"` :
-      process.platform === 'darwin' ? 'open "$url"' :
-      'xdg-open "$url"';
-    exec(cmd, () => {});
+  console.log(`  ${url}`);
+  console.log(`  watch: ${watchEnabled ? 'ON' : 'OFF'}${includeHidden ? ' (hidden: included)' : ''}\n`);
+
+  if (openBrowser) {
+    // Use `open` package - works cross-platform without shell quoting bugs
+    try {
+      const { default: openP } = await import('open');
+      await openP(url, { wait: false }).catch(() => {});
+    } catch {
+      /* user can navigate manually */
+    }
+  }
+
+  // ---- filesystem watcher (Phase 2.6, default ON) ----
+  if (watchEnabled) {
+    try {
+      const chokidar = await import('chokidar');
+      const watcher = chokidar.watch(target, {
+        ignored: (p: string) => {
+          const base = path.basename(p);
+          if (IGNORED_WATCH.has(base)) return true;
+          // ignore hidden dirs except allowlist
+          if (base.startsWith('.') && base !== '.' && !HIDDEN_WATCH_ALLOW.has(base)) return true;
+          return false;
+        },
+        ignoreInitial: true,
+        persistent: true,
+        awaitWriteFinish: { stabilityThreshold: 300, pollInterval: 100 },
+      });
+      let debounce: NodeJS.Timeout | null = null;
+      const trigger = () => {
+        if (debounce) clearTimeout(debounce);
+        debounce = setTimeout(() => {
+          console.log('  watch: change detected, reindexing…');
+          reindex().catch((e) => console.warn('  watch: reindex failed -', String(e)));
+        }, 500);
+      };
+      watcher.on('add', trigger).on('change', trigger).on('unlink', trigger);
+      const closeWatcher = () => { watcher.close().catch(() => {}); };
+      process.on('SIGINT', closeWatcher);
+      process.on('SIGTERM', closeWatcher);
+    } catch (e) {
+      console.warn(`  watch: failed to start - ${String(e)}`);
+    }
   }
 }
 
-main();
+const IGNORED_WATCH = new Set([
+  'node_modules', '.git', 'dist', 'build', 'out', '.next', '.cache',
+  '.venv', 'venv', '__pycache__', 'site-packages',
+  '.aws', '.ssh', '.gnupg', '.kube', '.docker', '.terraform',
+]);
+const HIDDEN_WATCH_ALLOW = new Set(['.github', '.vscode', '.editorconfig']);
+
+main().catch((e) => {
+  console.error('  archiviz: fatal -', String(e));
+  process.exit(1);
+});

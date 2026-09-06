@@ -1,6 +1,6 @@
 {
   "name": "@nacermissouni23/archiviz",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "description": "Local-first, deterministic code architecture explorer",
   "license": "MIT",
@@ -12,14 +12,21 @@
   "bugs": {
     "url": "https://github.com/nacermissouni23/Archiviz/issues"
   },
-  "keywords": ["architecture", "visualization", "code-graph", "mermaid", "explorer"],
+  "keywords": [
+    "architecture",
+    "visualization",
+    "code-graph",
+    "mermaid",
+    "explorer"
+  ],
   "bin": {
     "archiviz": "bin/archi.js",
     "archi": "bin/archi.js"
   },
   "files": [
     "bin/",
-    "dist/"
+    "dist/",
+    "scripts/"
   ],
   "engines": {
     "node": ">=20"
@@ -29,11 +36,24 @@
     "build:server": "tsc",
     "build": "npm run build:server && npm --prefix web run build",
     "prepublishOnly": "npm run build",
-    "start": "node dist/server.js"
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "fetch-gopls": "node scripts/fetch-gopls.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/static": "^7.0.4",
+    "@iarna/toml": "^2.2.5",
+    "chokidar": "^4.0.3",
+    "fast-xml-parser": "^4.5.7",
     "fastify": "^4.28.1",
+    "iconv-lite": "^0.6.3",
+    "ignore": "^7.0.8",
+    "open": "^10.2.0",
+    "p-limit": "^6.2.0",
     "pyright": "^1.1.403",
     "tree-sitter-wasms": "^0.1.13",
     "typescript": "^5.9.3",
@@ -41,7 +61,10 @@
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
-    "tsx": "^4.19.2"
+    "@vitest/coverage-v8": "^2.1.9",
+    "fast-glob": "^3.3.3",
+    "tsx": "^4.19.2",
+    "vitest": "^2.1.9"
   },
   "overrides": {
     "glob": "^11.0.3"

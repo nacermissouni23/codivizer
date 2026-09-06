@@ -1,10 +1,14 @@
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import pLimit from 'p-limit';
 import type { GraphStore, Sym } from './store.js';
 
 const require = createRequire(import.meta.url);
+
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 
 let ParserClass: any;
 let initialized = false;
@@ -213,7 +217,7 @@ const LANGUAGES: Record<string, LangDef> = {
     kindFromNode: () => 'function',
   },
   yaml: {
-    symbolTypes: new Set(),
+    symbolTypes: new Set(['block_mapping_pair']),
     importType: '',
     importPathField: null,
     callTypes: new Set(),
@@ -221,7 +225,7 @@ const LANGUAGES: Record<string, LangDef> = {
     kindFromNode: () => 'function',
   },
   toml: {
-    symbolTypes: new Set(),
+    symbolTypes: new Set(['table', 'table_array_element']),
     importType: '',
     importPathField: null,
     callTypes: new Set(),
@@ -229,7 +233,7 @@ const LANGUAGES: Record<string, LangDef> = {
     kindFromNode: () => 'function',
   },
   json: {
-    symbolTypes: new Set(),
+    symbolTypes: new Set(['pair']),
     importType: '',
     importPathField: null,
     callTypes: new Set(),
@@ -237,28 +241,28 @@ const LANGUAGES: Record<string, LangDef> = {
     kindFromNode: () => 'function',
   },
   css: {
-    symbolTypes: new Set(),
-    importType: '',
+    symbolTypes: new Set(['rule_set', 'at_rule', 'keyframes_statement', 'media_statement']),
+    importType: 'import_statement',
     importPathField: null,
     callTypes: new Set(),
     calleeField: null,
-    kindFromNode: () => 'function',
+    kindFromNode: () => 'class',
   },
   html: {
-    symbolTypes: new Set(),
-    importType: '',
+    symbolTypes: new Set(['element', 'script_element', 'style_element']),
+    importType: 'script_element',
     importPathField: null,
     callTypes: new Set(),
     calleeField: null,
-    kindFromNode: () => 'function',
+    kindFromNode: () => 'class',
   },
   vue: {
-    symbolTypes: new Set(),
-    importType: '',
-    importPathField: null,
-    callTypes: new Set(),
-    calleeField: null,
-    kindFromNode: () => 'function',
+    symbolTypes: new Set(['element', 'script_element', 'style_element', 'template_element']),
+    importType: 'import_statement',
+    importPathField: 'source',
+    callTypes: new Set(['call_expression']),
+    calleeField: 'function',
+    kindFromNode: () => 'class',
   },
   solidity: {
     symbolTypes: new Set(['function_definition', 'contract_declaration', 'interface_declaration', 'library_declaration']),
@@ -277,23 +281,23 @@ const LANGUAGES: Record<string, LangDef> = {
     kindFromNode: (t) => t.includes('module') || t.includes('type') ? 'class' : 'function',
   },
   ql: {
-    symbolTypes: new Set(),
-    importType: '',
+    symbolTypes: new Set(['class', 'predicate', 'module', 'import']),
+    importType: 'import',
     importPathField: null,
-    callTypes: new Set(),
+    callTypes: new Set(['call']),
     calleeField: null,
-    kindFromNode: () => 'function',
+    kindFromNode: (t) => t === 'class' || t === 'module' ? 'class' : 'function',
   },
   systemrdl: {
-    symbolTypes: new Set(),
+    symbolTypes: new Set(['component_definition', 'enum_definition']),
     importType: '',
     importPathField: null,
     callTypes: new Set(),
     calleeField: null,
-    kindFromNode: () => 'function',
+    kindFromNode: () => 'class',
   },
   tlaplus: {
-    symbolTypes: new Set(),
+    symbolTypes: new Set(['operator_definition', 'function_definition', 'module_definition']),
     importType: '',
     importPathField: null,
     callTypes: new Set(),
@@ -301,16 +305,16 @@ const LANGUAGES: Record<string, LangDef> = {
     kindFromNode: () => 'function',
   },
   elisp: {
-    symbolTypes: new Set(),
+    symbolTypes: new Set(['list']),
     importType: '',
     importPathField: null,
-    callTypes: new Set(),
+    callTypes: new Set(['list']),
     calleeField: null,
     kindFromNode: () => 'function',
   },
   embedded_template: {
-    symbolTypes: new Set(),
-    importType: '',
+    symbolTypes: new Set(['content', 'output', 'tag']),
+    importType: 'partial_statement',
     importPathField: null,
     callTypes: new Set(),
     calleeField: null,
@@ -322,7 +326,7 @@ const EXT_LANG: Record<string, string> = {
   '.c': 'c', '.h': 'c',
   '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp', '.hxx': 'cpp',
   '.rs': 'rust',
-  '.rb': 'ruby', '.erb': 'ruby',
+  '.rb': 'ruby',
   '.php': 'php',
   '.kt': 'kotlin', '.kts': 'kotlin',
   '.swift': 'swift',
@@ -331,7 +335,8 @@ const EXT_LANG: Record<string, string> = {
   '.go': 'go',
   '.py': 'python',
   '.js': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
-  '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript',
+  '.ts': 'typescript', '.tsx': 'typescript', '.mts': 'typescript', '.cts': 'typescript',
+  '.jsx': 'javascript',
   '.bash': 'bash', '.sh': 'bash', '.zsh': 'bash',
   '.dart': 'dart',
   '.ex': 'elixir', '.exs': 'elixir',
@@ -346,9 +351,14 @@ const EXT_LANG: Record<string, string> = {
   '.json': 'json',
   '.css': 'css', '.scss': 'css', '.less': 'css',
   '.html': 'html', '.htm': 'html', '.vue': 'vue',
+  '.svelte': 'vue', '.astro': 'vue',
   '.sol': 'solidity',
   '.res': 'rescript',
   '.ql': 'ql', '.qll': 'ql',
+  '.el': 'elisp',
+  '.erb': 'ruby',
+  '.hbs': 'embedded_template', '.ejs': 'embedded_template',
+  '.j2': 'embedded_template', '.jinja': 'embedded_template', '.jinja2': 'embedded_template',
 };
 
 export function getTreeSitterLang(ext: string): string | undefined {
@@ -515,11 +525,16 @@ export async function indexTreeSitter(
   let totalImports = 0;
   let totalFiles = 0;
 
+  const limit = pLimit(Math.max(1, os.cpus().length));
+
   for (const [lang, langFiles] of byLang) {
     // Load language WASM
     let wasmLang: any;
+    const wasmKey = lang === 'typescript' ? 'typescript' : lang === 'javascript' ? 'javascript' : lang;
+    // Handle tsx separately: map typescript -> try tsx wasm for .tsx files handled below
+    // For now typescript lang covers both .ts/.tsx via typescript WASM
     try {
-      const wasmPath = require.resolve(`tree-sitter-wasms/out/tree-sitter-${lang}.wasm`);
+      const wasmPath = require.resolve(`tree-sitter-wasms/out/tree-sitter-${wasmKey}.wasm`);
       wasmLang = await ParserClass.Language.load(wasmPath);
     } catch (e) {
       console.warn(`  tree-sitter: grammar not found for ${lang} - ${e}`);
@@ -529,19 +544,32 @@ export async function indexTreeSitter(
     parser.setLanguage(wasmLang);
     const langDef = LANGUAGES[lang];
 
-    for (const rel of langFiles) {
+    const parseOne = async (rel: string) => {
+      try {
+        const st = fs.statSync(path.join(root, rel));
+        if (st.size > MAX_FILE_SIZE_BYTES) {
+          console.warn(`  tree-sitter: skipping ${rel} (exceeds 20 MB)`);
+          return;
+        }
+      } catch { /* ignore */ }
       let text: string;
       try {
         text = fs.readFileSync(path.join(root, rel), 'utf8');
       } catch {
-        continue;
+        return;
       }
-
-      const tree = parser.parse(text);
+      let tree: any;
+      try {
+        tree = parser.parse(text);
+      } catch (e) {
+        console.warn(`  tree-sitter: parse failed for ${rel} - ${e}`);
+        return;
+      }
       const treeRoot = tree.rootNode;
 
       // Track symbols in this file for call resolution
-      const fileSyms = new Map<string, { node: any; kind: Sym['kind'] }>();
+      const fileSyms = new Map<string, { node: any; kind: Sym['kind']; name: string }>();
+      const fileSymNames = new Map<string, string>(); // name -> id (exact)
 
       // --- pass 1: symbols ---
       const collectSymbols = (node: any) => {
@@ -551,7 +579,8 @@ export async function indexTreeSitter(
             const kind = langDef.kindFromNode(node.type);
             const id = `${rel}:treesym:${name}`;
             if (!fileSyms.has(id)) {
-              fileSyms.set(id, { node, kind });
+              fileSyms.set(id, { node, kind, name });
+              if (!fileSymNames.has(name)) fileSymNames.set(name, id);
               const sym: Sym = {
                 id, kind, name, fileId: rel,
                 startLine: node.startPosition.row + 1,
@@ -568,14 +597,13 @@ export async function indexTreeSitter(
           collectSymbols(node.namedChild(i));
         }
       };
-      collectSymbols(treeRoot);
+      try { collectSymbols(treeRoot); } catch { /* tree walk */ }
 
       // --- pass 2: imports ---
       const collectImports = (node: any) => {
-        if (node.type === langDef.importType) {
+        if (langDef.importType && node.type === langDef.importType) {
           const rawPath = getImportPath(node, langDef);
           if (rawPath) {
-            // Determine if this is a system import (C: <stdio.h> vs "foo.h")
             let nodeType: string | undefined;
             for (let i = 0; i < node.namedChildCount; i++) {
               const child = node.namedChild(i);
@@ -597,14 +625,13 @@ export async function indexTreeSitter(
           collectImports(node.namedChild(i));
         }
       };
-      collectImports(treeRoot);
+      try { collectImports(treeRoot); } catch { /* */ }
 
-      // --- pass 3: calls ---
+      // --- pass 3: calls (fixed: exact name match, no substring hack) ---
       const collectCalls = (node: any) => {
         if (langDef.callTypes.has(node.type)) {
           const calleeName = getCalleeName(node, langDef);
           if (calleeName) {
-            // Find enclosing symbol
             let best: { id: string; node: any } | null = null;
             for (const [sid, sdata] of fileSyms) {
               const sn = sdata.node;
@@ -616,14 +643,8 @@ export async function indexTreeSitter(
                 }
               }
             }
-            // Find target symbol by name
-            let targetId: string | null = null;
-            for (const [sid, sdata] of fileSyms) {
-              if (sdata.node.text?.includes(calleeName) || sid.endsWith(`:${calleeName}`)) {
-                targetId = sid;
-                break;
-              }
-            }
+            // Exact name match only (no substring)
+            const targetId = fileSymNames.get(calleeName) ?? null;
             if (best && targetId && best.id !== targetId) {
               const before = store.edges.length;
               store.addEdge(best.id, targetId, 'calls');
@@ -635,10 +656,16 @@ export async function indexTreeSitter(
           collectCalls(node.namedChild(i));
         }
       };
-      collectCalls(treeRoot);
+      try { collectCalls(treeRoot); } catch { /* */ }
 
-      tree.delete();
+      try { tree.delete(); } catch { /* */ }
       totalFiles++;
+    };
+
+    // Parse in parallel with concurrency cap; parser is NOT thread-safe, so serialize per-language
+    // Use sequential for now but via pLimit for future thread-safety if parser instance per task
+    for (const rel of langFiles) {
+      await limit(() => parseOne(rel));
     }
   }
 

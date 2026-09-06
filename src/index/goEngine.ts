@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL, fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { LspClient } from './lsp.js';
+import { resolveGopls } from './goplsResolver.js';
 import type { GraphStore, Sym } from './store.js';
 
 const LSP_TIMEOUT_MS = 120_000;
@@ -123,20 +123,11 @@ export async function indexGo(
 ): Promise<{ symbols: number; calls: number; imports: number }> {
   if (goFiles.length === 0) return { symbols: 0, calls: 0, imports: 0 };
 
-  // Find gopls binary
-  let goplsBin: string;
-  try {
-    goplsBin = execFileSync('where', ['gopls'], { encoding: 'utf8', windowsHide: true }).trim().split('\n')[0];
-  } catch {
-    try {
-      // Try common Go install path
-      const goPath = execFileSync('go', ['env', 'GOPATH'], { encoding: 'utf8', windowsHide: true }).trim();
-      goplsBin = path.join(goPath, 'bin', 'gopls');
-      if (!fs.existsSync(goplsBin)) throw new Error('not found');
-    } catch {
-      throw new Error('gopls is not installed (go install golang.org/x/tools/gopls@latest)');
-    }
-  }
+  // Resolve gopls: prefer bundled binary, fall back to PATH
+  const resolved = resolveGopls();
+  const goplsBin = resolved.command;
+  const goplsArgs = resolved.args;
+  const fromBundled = resolved.source === 'bundled';
 
   const goSet = new Set(goFiles);
   const modulePath = detectModulePath(root, goFiles);
@@ -151,7 +142,8 @@ export async function indexGo(
   const openable = [...texts.keys()];
   if (openable.length === 0) return { symbols: 0, calls: 0, imports: 0 };
 
-  const client = new LspClient(goplsBin, [], root);
+  const client = new LspClient(goplsBin, goplsArgs, root);
+  void fromBundled;
 
   const withTimeout = <T,>(p: Promise<T>, label: string): Promise<T> =>
     Promise.race([

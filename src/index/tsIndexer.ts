@@ -4,12 +4,15 @@ import * as fs from 'node:fs';
 import { builtinModules } from 'node:module';
 import type { GraphStore, Sym } from './store.js';
 
-const LANG_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+const LANG_EXTS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts']);
+const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024;
 
 function scriptKind(ext: string): ts.ScriptKind {
   switch (ext) {
     case '.tsx': return ts.ScriptKind.TSX;
     case '.jsx': return ts.ScriptKind.JSX;
+    case '.mts': return ts.ScriptKind.TS;
+    case '.cts': return ts.ScriptKind.TS;
     case '.js': case '.mjs': case '.cjs': return ts.ScriptKind.JS;
     default: return ts.ScriptKind.TS;
   }
@@ -18,7 +21,27 @@ function scriptKind(ext: string): ts.ScriptKind {
 export function indexRepo(root: string, files: string[], store: GraphStore): void {
   store.clear();
 
-  const langFiles = files.filter((f) => LANG_EXTS.has(path.extname(f).toLowerCase()));
+  let langFiles = files.filter((f) => LANG_EXTS.has(path.extname(f).toLowerCase()));
+  // Honor tsconfig.json#exclude if present
+  try {
+    const tsconfigRaw = fs.readFileSync(path.join(root, 'tsconfig.json'), 'utf8');
+    const tsconfig = JSON.parse(tsconfigRaw.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, ''));
+    const exclude: string[] = tsconfig.exclude;
+    if (Array.isArray(exclude) && exclude.length > 0) {
+      const normExclude = exclude.map((p: string) => p.replace(/\/$/, ''));
+      langFiles = langFiles.filter((f) => {
+        for (const ex of normExclude) {
+          if (f === ex || f.startsWith(ex + '/') || f.startsWith(ex.replace(/^\//, ''))) return false;
+          // glob-like: dist/**, **/generated
+          if (ex.includes('*')) {
+            const re = new RegExp('^' + ex.replace(/\*\*/g, '.*').replace(/\*/g, '[^/]*').replace(/\//g, '\\/') + '($|\\/)');
+            if (re.test(f)) return false;
+          }
+        }
+        return true;
+      });
+    }
+  } catch { /* no tsconfig or parse error */ }
   const sourceByFile = new Map<string, ts.SourceFile>();
 
   function toRel(abs: string): string {
@@ -32,6 +55,11 @@ export function indexRepo(root: string, files: string[], store: GraphStore): voi
     const cached = sourceByFile.get(rel);
     if (cached) return cached;
     try {
+      const st = fs.statSync(absPath);
+      if (st.size > MAX_FILE_SIZE_BYTES) {
+        console.warn(`  ts: skipping ${rel} (exceeds 20 MB)`);
+        return undefined;
+      }
       const text = fs.readFileSync(absPath, 'utf8');
       const sf = ts.createSourceFile(absPath, text, ts.ScriptTarget.Latest, true);
       sourceByFile.set(rel, sf);

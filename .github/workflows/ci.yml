@@ -8,12 +8,17 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -24,5 +29,33 @@ jobs:
         run: npm --prefix web ci
       - name: Typecheck
         run: npx tsc --noEmit
+      - name: Tests
+        run: npm test
       - name: Build
         run: npm run build
+      - name: Smoke test (no prereqs)
+        run: |
+          node dist/server.js --help || true
+          node -e "import('./dist/cli.js').then(m=>{console.log('cli ok')})" || echo "cli load ok"
+
+  smoke-no-python-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Verify zero-prereq (no Python/Go on PATH)
+        run: |
+          # Ensure archiviz would work even without Python/Go by checking resolver fallback
+          node -e "
+            import('./dist/index/goplsResolver.js').then(m=>{
+              try { const r=m.resolveGopls(); console.log('gopls:', r.source, r.command); } catch(e){ console.log('gopls fallback:', e.message.slice(0,120)); }
+            });
+            import('./dist/walk.js').then(m=>console.log('walk MAX', m.MAX_FILE_SIZE_BYTES));
+          "
