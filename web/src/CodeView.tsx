@@ -72,7 +72,7 @@ export default function CodeView({
             <FileQuestion size={28} strokeWidth={1.5} style={{ color: 'var(--text-3)', marginBottom: 12 }} />
             <div className="empty-title">No preview available</div>
             <div className="empty-desc">
-              Archiviz indexes the structure of <code>.{ext ?? '?'}</code> files but can't render
+              Codivizer indexes the structure of <code>.{ext ?? '?'}</code> files but can't render
               their contents. The file is part of the tree and watched for changes.
             </div>
           </div>
